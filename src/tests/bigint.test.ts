@@ -22,8 +22,8 @@ describe('bigint', () => {
   it('above MAX_SAFE_INTEGER', () => {
     const sqids = new Sqids()
 
-    const n = BigInt(Number.MAX_SAFE_INTEGER) + 1n // 9007199254740992n
-    const id = 'pup591lWlB'
+    const n = BigInt(Number.MAX_SAFE_INTEGER) + 2n // 9007199254740993n
+    const id = 'nQnWViGxG6'
 
     expect(sqids.encode([n])).toBe(id)
     expect(sqids.decodeBigInt(id)).toEqual([n])
@@ -82,8 +82,35 @@ describe('bigint', () => {
 
   it('encode out-of-range bigint', () => {
     const sqids = new Sqids()
+
+    expect(() => sqids.encode([-1n])).toThrow(
+      'Encoding supports non-negative BigInt values',
+    )
+  })
+
+  it('encode out-of-range number still throws', () => {
+    const sqids = new Sqids()
     const encodingError = `Encoding supports numbers between 0 and ${Number.MAX_SAFE_INTEGER}`
 
-    expect(() => sqids.encode([-1n])).toThrow(encodingError)
+    expect(() => sqids.encode([Number.MAX_SAFE_INTEGER + 1])).toThrow(
+      encodingError,
+    )
+    expect(() => sqids.encode([-1])).toThrow(encodingError)
+  })
+
+  it('decode() loses precision above MAX_SAFE_INTEGER — use decodeBigInt()', () => {
+    const sqids = new Sqids()
+
+    // MAX_SAFE_INTEGER + 2 = 2^53 + 1, which is not exactly representable as a
+    // float64 — number arithmetic silently rounds it to 2^53 (MAX_SAFE_INTEGER + 1)
+    const n = BigInt(Number.MAX_SAFE_INTEGER) + 2n
+    const id = sqids.encode([n])
+
+    // decodeBigInt() recovers the exact value
+    expect(sqids.decodeBigInt(id)).toEqual([n])
+
+    // decode() returns an imprecise number; converting back to BigInt exposes the loss
+    const [lossyResult] = sqids.decode(id)
+    expect(BigInt(lossyResult!)).not.toBe(n)
   })
 })

@@ -629,11 +629,16 @@ export default class Sqids {
     }
 
     for (const n of numbers) {
-      const zero = typeof n === 'bigint' ? BigInt(0) : 0
-      if (n < zero || (typeof n === 'number' && n > this.maxValue())) {
-        throw new Error(
-          `Encoding supports numbers between 0 and ${this.maxValue()}`,
-        )
+      if (typeof n === 'bigint') {
+        if (n < 0n) {
+          throw new Error('Encoding supports non-negative BigInt values')
+        }
+      } else {
+        if (n < 0 || n > this.maxValue()) {
+          throw new Error(
+            `Encoding supports numbers between 0 and ${this.maxValue()}`,
+          )
+        }
       }
     }
 
@@ -641,57 +646,30 @@ export default class Sqids {
   }
 
   decode(id: string): number[] {
-    const ret: number[] = []
-
-    if (id === '') {
-      return ret
-    }
-
-    const alphabetChars = this.alphabet.split('')
-    for (const c of id.split('')) {
-      if (!alphabetChars.includes(c)) {
-        return ret
-      }
-    }
-
-    const prefix = id.charAt(0)
-    const offset = this.alphabet.indexOf(prefix)
-    let alphabet = this.alphabet.slice(offset) + this.alphabet.slice(0, offset)
-    alphabet = alphabet.split('').reverse().join('')
-    let slicedId = id.slice(1)
-
-    while (slicedId.length > 0) {
-      const separator = alphabet.slice(0, 1)
-
-      const chunks = slicedId.split(separator)
-      if (chunks.length > 0) {
-        if (chunks[0] === '') {
-          return ret
-        }
-
-        ret.push(this.toNumber(chunks[0]!, alphabet.slice(1)))
-        if (chunks.length > 1) {
-          alphabet = this.shuffle(alphabet)
-        }
-      }
-
-      slicedId = chunks.slice(1).join(separator)
-    }
-
-    return ret
+    return this.decodeRaw(id).map(({ chunk, alphabet }) =>
+      this.toNumber(chunk, alphabet),
+    )
   }
 
   decodeBigInt(id: string): bigint[] {
-    const ret: bigint[] = []
+    return this.decodeRaw(id).map(({ chunk, alphabet }) =>
+      this.toBigInt(chunk, alphabet),
+    )
+  }
+
+  private decodeRaw(
+    id: string,
+  ): Array<{ chunk: string; alphabet: string }> {
+    const result: Array<{ chunk: string; alphabet: string }> = []
 
     if (id === '') {
-      return ret
+      return result
     }
 
     const alphabetChars = this.alphabet.split('')
     for (const c of id.split('')) {
       if (!alphabetChars.includes(c)) {
-        return ret
+        return result
       }
     }
 
@@ -707,10 +685,10 @@ export default class Sqids {
       const chunks = slicedId.split(separator)
       if (chunks.length > 0) {
         if (chunks[0] === '') {
-          return ret
+          return result
         }
 
-        ret.push(this.toBigInt(chunks[0]!, alphabet.slice(1)))
+        result.push({ chunk: chunks[0]!, alphabet: alphabet.slice(1) })
         if (chunks.length > 1) {
           alphabet = this.shuffle(alphabet)
         }
@@ -719,7 +697,7 @@ export default class Sqids {
       slicedId = chunks.slice(1).join(separator)
     }
 
-    return ret
+    return result
   }
 
   private encodeNumbers(numbers: (number | bigint)[], increment = 0): string {
@@ -789,15 +767,21 @@ export default class Sqids {
   private toId(num: number | bigint, alphabet: string): string {
     const id = []
     const chars = alphabet.split('')
-    const base = BigInt(chars.length)
-    const zero = BigInt(0)
 
-    let result = BigInt(num)
-
-    do {
-      id.unshift(chars[Number(result % base)])
-      result /= base
-    } while (result > zero)
+    if (typeof num === 'bigint') {
+      const base = BigInt(chars.length)
+      let result = num
+      do {
+        id.unshift(chars[Number(result % base)])
+        result /= base
+      } while (result > 0n)
+    } else {
+      let result = num
+      do {
+        id.unshift(chars[result % chars.length])
+        result = Math.floor(result / chars.length)
+      } while (result > 0)
+    }
 
     return id.join('')
   }
