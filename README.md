@@ -105,6 +105,30 @@ const id = sqids.encode([1, 2, 3]) // "se8ojk"
 const numbers = sqids.decode(id) // [1, 2, 3]
 ```
 
+Encode and decode BigInts — for example, to shorten a UUID into a compact URL-safe ID:
+
+```javascript
+import Sqids from 'sqids'
+
+const sqids = new Sqids()
+
+// Encode a UUID as a Sqid
+const uuid = '8a42ca70-bbf4-472a-ae24-c3c06674e16a'
+const n = BigInt(`0x${uuid.replaceAll('-', '')}`)
+const id = sqids.encode([n]) // "KeUVFVS3J9xBd2ENsSc6oTu"
+
+// Decode back using decodeBigInt() to recover the full precision bigint
+const [decoded] = sqids.decodeBigInt(id)
+const hex = decoded.toString(16).padStart(32, '0')
+const restored = [hex.slice(0,8), hex.slice(8,12), hex.slice(12,16), hex.slice(16,20), hex.slice(20)].join('-')
+// '8a42ca70-bbf4-472a-ae24-c3c06674e16a'
+```
+
+> **Note**
+> `encode()` accepts both `number` and `bigint` values (and mixes of both).
+> Use `decodeBigInt()` when your encoded values may exceed `Number.MAX_SAFE_INTEGER`.
+> `decode()` returns `number[]` and is unchanged from before.
+
 ## 📝 License
 
 [MIT](LICENSE)

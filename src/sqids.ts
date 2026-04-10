@@ -623,18 +623,18 @@ export default class Sqids {
     this.blocklist = filteredBlocklist
   }
 
-  encode(numbers: number[]): string {
+  encode(numbers: (number | bigint)[]): string {
     if (numbers.length === 0) {
       return ''
     }
 
-    const areAllNumbersInRange = numbers.every(
-      (n) => n >= 0 && n <= this.maxValue(),
-    )
-    if (!areAllNumbersInRange) {
-      throw new Error(
-        `Encoding supports numbers between 0 and ${this.maxValue()}`,
-      )
+    for (const n of numbers) {
+      const zero = typeof n === 'bigint' ? BigInt(0) : 0
+      if (n < zero || (typeof n === 'number' && n > this.maxValue())) {
+        throw new Error(
+          `Encoding supports numbers between 0 and ${this.maxValue()}`,
+        )
+      }
     }
 
     return this.encodeNumbers(numbers)
@@ -681,17 +681,60 @@ export default class Sqids {
     return ret
   }
 
-  private encodeNumbers(numbers: number[], increment = 0): string {
+  decodeBigInt(id: string): bigint[] {
+    const ret: bigint[] = []
+
+    if (id === '') {
+      return ret
+    }
+
+    const alphabetChars = this.alphabet.split('')
+    for (const c of id.split('')) {
+      if (!alphabetChars.includes(c)) {
+        return ret
+      }
+    }
+
+    const prefix = id.charAt(0)
+    const offset = this.alphabet.indexOf(prefix)
+    let alphabet = this.alphabet.slice(offset) + this.alphabet.slice(0, offset)
+    alphabet = alphabet.split('').reverse().join('')
+    let slicedId = id.slice(1)
+
+    while (slicedId.length > 0) {
+      const separator = alphabet.slice(0, 1)
+
+      const chunks = slicedId.split(separator)
+      if (chunks.length > 0) {
+        if (chunks[0] === '') {
+          return ret
+        }
+
+        ret.push(this.toBigInt(chunks[0]!, alphabet.slice(1)))
+        if (chunks.length > 1) {
+          alphabet = this.shuffle(alphabet)
+        }
+      }
+
+      slicedId = chunks.slice(1).join(separator)
+    }
+
+    return ret
+  }
+
+  private encodeNumbers(numbers: (number | bigint)[], increment = 0): string {
     if (increment > this.alphabet.length) {
       throw new Error('Reached max attempts to re-generate the ID')
     }
 
     let offset =
-      numbers.reduce(
-        (a, v, i) =>
-          this.alphabet[v % this.alphabet.length]!.codePointAt(0)! + i + a,
-        numbers.length,
-      ) % this.alphabet.length
+      numbers.reduce<number>((a, v, i) => {
+        const vMod =
+          typeof v === 'bigint'
+            ? Number(v % BigInt(this.alphabet.length))
+            : v % this.alphabet.length
+        return this.alphabet[vMod]!.codePointAt(0)! + i + a
+      }, numbers.length) % this.alphabet.length
 
     offset = (offset + increment) % this.alphabet.length
     let alphabet = this.alphabet.slice(offset) + this.alphabet.slice(0, offset)
@@ -743,18 +786,29 @@ export default class Sqids {
     return chars.join('')
   }
 
-  private toId(num: number, alphabet: string): string {
+  private toId(num: number | bigint, alphabet: string): string {
     const id = []
     const chars = alphabet.split('')
+    const base = BigInt(chars.length)
+    const zero = BigInt(0)
 
-    let result = num
+    let result = BigInt(num)
 
     do {
-      id.unshift(chars[result % chars.length])
-      result = Math.floor(result / chars.length)
-    } while (result > 0)
+      id.unshift(chars[Number(result % base)])
+      result /= base
+    } while (result > zero)
 
     return id.join('')
+  }
+
+  private toBigInt(id: string, alphabet: string): bigint {
+    const chars = alphabet.split('')
+    const base = BigInt(chars.length)
+    const zero = BigInt(0)
+    return id
+      .split('')
+      .reduce((a, v) => a * base + BigInt(chars.indexOf(v)), zero)
   }
 
   private toNumber(id: string, alphabet: string): number {
